@@ -1,0 +1,45 @@
+{
+  "name": "ender-dragon-minecraft-bot",
+  "version": "1.0.0",
+  "description": "An intelligent Minecraft Bedrock bot powered by Google's Gemini AI with Ender Dragon mission",
+  "main": "ender_dragon_bot.js",
+  "scripts": {
+    "start": "node ender_dragon_bot.js",
+    "dev": "nodemon ender_dragon_bot.js --inspect",
+    "test": "node test.js",
+    "setup": "node setup.js"
+  },
+  "keywords": [
+    "minecraft",
+    "bedrock",
+    "bot",
+    "gemini",
+    "ai",
+    "gaming",
+    "automation",
+    "ender-dragon",
+    "quest"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "@google/generative-ai": "^0.17.1",
+    "bedrock-protocol": "^3.45.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/ender-dragon-minecraft-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/ender-dragon-minecraft-bot/issues"
+  },
+  "homepage": "https://github.com/yourusername/ender-dragon-minecraft-bot#readme"
+}
