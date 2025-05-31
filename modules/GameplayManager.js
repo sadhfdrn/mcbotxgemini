@@ -18,9 +18,9 @@ class GameplayManager {
             playerCollaborationData: []
         };
         
-        // Initialize game mode detection
-        this.detectGameMode();
+        // Initialize game mode detection with delay to ensure other managers are ready
         this.setupAdaptiveStrategies();
+        setTimeout(() => this.detectGameMode(), 2000); // Delay to ensure bot is fully initialized
     }
 
     async detectGameMode() {
@@ -71,7 +71,7 @@ class GameplayManager {
 
     analyzePlayerPatterns() {
         // Analyze player movement and behavior to infer game mode
-        const playerBehaviors = this.bot.chatManager?.learningData.playerBehaviors;
+        const playerBehaviors = this.bot.chatManager?.learningData?.playerBehaviors;
         if (playerBehaviors) {
             let creativeBehaviorCount = 0;
             let survivalBehaviorCount = 0;
@@ -135,17 +135,53 @@ class GameplayManager {
     }
 
     async applyStrategy(strategy) {
-        // Communicate strategy to mission manager
-        if (this.bot.missionManager) {
-            await this.bot.missionManager.updateStrategy(strategy);
+        try {
+            // Check if missionManager exists and has the updateStrategy method
+            if (this.bot.missionManager && typeof this.bot.missionManager.updateStrategy === 'function') {
+                await this.bot.missionManager.updateStrategy(strategy);
+                console.log('✅ Strategy successfully applied to mission manager');
+            } else {
+                console.log('⚠️ MissionManager not ready yet, storing strategy for later application');
+                // Store the strategy for later application
+                this.pendingStrategy = strategy;
+                
+                // Try again after a delay
+                setTimeout(() => {
+                    if (this.bot.missionManager && typeof this.bot.missionManager.updateStrategy === 'function') {
+                        this.bot.missionManager.updateStrategy(this.pendingStrategy);
+                        console.log('✅ Delayed strategy application successful');
+                        this.pendingStrategy = null;
+                    }
+                }, 5000);
+            }
+            
+            // Adjust chat behavior if chat manager is available
+            if (this.bot.chatManager && typeof this.bot.chatManager.broadcastToAllPlayers === 'function') {
+                await this.bot.chatManager.broadcastToAllPlayers(
+                    `🎯 Strategy adapted for ${this.currentGameMode} (${this.difficulty}): ${strategy.dragonStrategy}`
+                );
+            } else if (this.bot.sendChat && typeof this.bot.sendChat === 'function') {
+                // Fallback to basic chat if available
+                await this.bot.sendChat(`🎯 Strategy: ${strategy.dragonStrategy}`);
+            } else {
+                console.log('🤖 Strategy applied: ' + strategy.dragonStrategy);
+            }
+            
+        } catch (error) {
+            console.error('❌ Strategy application failed:', error);
+            // Don't crash, just log the error and continue
         }
-        
-        // Adjust chat behavior
-        if (this.bot.chatManager) {
-            await this.bot.chatManager.broadcastToAllPlayers(
-                `🎯 Strategy adapted for ${this.currentGameMode} (${this.difficulty}): ${strategy.dragonStrategy}`
-            );
+    }
+
+    // Add method to manually apply pending strategy (useful for when managers come online)
+    applyPendingStrategy() {
+        if (this.pendingStrategy && this.bot.missionManager && typeof this.bot.missionManager.updateStrategy === 'function') {
+            this.bot.missionManager.updateStrategy(this.pendingStrategy);
+            console.log('✅ Pending strategy applied');
+            this.pendingStrategy = null;
+            return true;
         }
+        return false;
     }
 
     // AI-powered decision making for combat scenarios
@@ -183,7 +219,7 @@ CURRENT SITUATION:
 - Distance: ${situation.distance || 'Unknown'}
 - Environment: ${situation.environment || 'Unknown'}
 - Available Items: ${situation.availableItems || 'Unknown'}
-- Player Allies: ${this.bot.players.size}
+- Player Allies: ${this.bot.players?.size || 0}
 
 PERFORMANCE HISTORY:
 - Deaths: ${this.performanceMetrics.deathCount}
@@ -333,7 +369,7 @@ Format: ACTION_NAME: Brief reason (max 50 chars)`;
 
     // Update health and track damage
     updateHealth(newHealth) {
-        const oldHealth = this.bot.health;
+        const oldHealth = this.bot.health || 20;
         this.bot.health = newHealth;
         
         if (newHealth < oldHealth) {
@@ -358,8 +394,58 @@ Format: ACTION_NAME: Brief reason (max 50 chars)`;
             health: this.bot.health,
             strategy: this.getCurrentStrategy(),
             performance: this.performanceMetrics,
-            successRate: this.calculateSuccessRate()
+            successRate: this.calculateSuccessRate(),
+            hasPendingStrategy: !!this.pendingStrategy
         };
+    }
+
+    // Add missing methods that might be called by MissionManager
+    async beginResourceGathering() {
+        console.log('⛏️ Beginning resource gathering phase...');
+        try {
+            if (this.bot.sendChat) {
+                await this.bot.sendChat('⛏️ Starting resource gathering! Looking for diamonds and iron!');
+            }
+            // Implementation would go here
+        } catch (error) {
+            console.error('❌ Resource gathering initialization failed:', error);
+        }
+    }
+
+    async startNetherExpedition() {
+        console.log('🔥 Starting Nether expedition...');
+        try {
+            if (this.bot.sendChat) {
+                await this.bot.sendChat('🔥 Entering the Nether! Time to hunt blazes and gather materials!');
+            }
+            // Implementation would go here
+        } catch (error) {
+            console.error('❌ Nether expedition initialization failed:', error);
+        }
+    }
+
+    async searchForStronghold() {
+        console.log('🏰 Searching for stronghold...');
+        try {
+            if (this.bot.sendChat) {
+                await this.bot.sendChat('🏰 Searching for the stronghold! The End Portal awaits!');
+            }
+            // Implementation would go here
+        } catch (error) {
+            console.error('❌ Stronghold search initialization failed:', error);
+        }
+    }
+
+    async enterTheEnd() {
+        console.log('🌌 Entering The End...');
+        try {
+            if (this.bot.sendChat) {
+                await this.bot.sendChat('🌌 Entering The End! The final battle begins!');
+            }
+            // Implementation would go here
+        } catch (error) {
+            console.error('❌ End entry initialization failed:', error);
+        }
     }
 }
 
