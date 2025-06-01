@@ -18,10 +18,96 @@ class MissionManager {
             currentGoal: ''
         };
         
+        // Strategy state
+        this.adaptiveStrategy = null;
+        
         this.setupGeminiContext();
     }
 
+    // ADD MISSING METHOD: getCurrentStatus
+    getCurrentStatus() {
+        return {
+            missionActive: this.missionActive,
+            missionStarted: this.missionStarted,
+            currentPhase: this.currentPhase,
+            currentTask: this.currentTask,
+            currentGoal: this.research.currentGoal || 'Waiting for mission start',
+            strategy: this.research.currentStrategy || 'No strategy set',
+            adaptiveStrategy: this.adaptiveStrategy,
+            progressCount: this.progressLog.length,
+            lastProgress: this.progressLog.length > 0 ? this.progressLog[this.progressLog.length - 1] : null
+        };
+    }
+
+    // ADD MISSING METHOD: onConnect
+    async onConnect() {
+        console.log('🔗 MissionManager: Bot connected, initializing mission system...');
+        
+        // Initialize mission state on connection
+        if (!this.missionStarted && this.bot.players && Object.keys(this.bot.players).length > 0) {
+            console.log('🎯 Players detected, starting mission...');
+            await this.startEnderDragonMission();
+        } else {
+            console.log('⏳ Waiting for players to join before starting mission...');
+            // Send a safe welcome message
+            try {
+                await this.bot.sendChat('🤖 DragonSlayerBot connected! Ready to hunt the Ender Dragon!');
+            } catch (error) {
+                console.error('Failed to send welcome message:', error);
+            }
+        }
+    }
+
+    // FIXED: updateStrategy method with better error handling
+    async updateStrategy(strategy) {
+        try {
+            this.adaptiveStrategy = strategy;
+            console.log('📋 Mission strategy updated:', strategy);
+            
+            // Update the research strategy based on the adaptive strategy
+            if (strategy.dragonStrategy) {
+                this.research.currentStrategy = `${strategy.dragonStrategy} approach with ${strategy.preparation} preparation`;
+            }
+            
+            // Adjust current goal based on strategy
+            if (this.currentPhase === 'preparation') {
+                switch (strategy.preparation) {
+                    case 'minimal':
+                        this.research.currentGoal = 'Quick resource gathering - basic gear only';
+                        break;
+                    case 'comprehensive':
+                        this.research.currentGoal = 'Thorough preparation - full diamond gear, food, and extras';
+                        break;
+                    case 'extensive':
+                        this.research.currentGoal = 'Maximum preparation - backup gear, potions, and safety items';
+                        break;
+                    default:
+                        this.research.currentGoal = 'Standard resource gathering and preparation';
+                }
+            }
+            
+            // Update system prompt context
+            this.setupGeminiContext();
+            
+            return true;
+        } catch (error) {
+            console.error('❌ Strategy update failed:', error);
+            return false;
+        }
+    }
+
+    // Get current adaptive strategy
+    getAdaptiveStrategy() {
+        return this.adaptiveStrategy || {
+            dragonStrategy: 'balanced_tactical',
+            preparation: 'comprehensive',
+            riskTolerance: 'calculated',
+            collaboration: 'coordinated_assault'
+        };
+    }
+
     setupGeminiContext() {
+        const adaptiveStrategy = this.getAdaptiveStrategy();
         this.systemPrompt = `You are DragonSlayerBot, an AI assistant in Minecraft Bedrock Edition with ONE ULTIMATE MISSION: Defeat the Ender Dragon!
 
 Your personality:
@@ -35,7 +121,8 @@ Mission Status: ${this.missionActive ? 'ACTIVE' : 'WAITING FOR PLAYERS'}
 Current Phase: ${this.currentPhase}
 Current Goal: ${this.research.currentGoal || 'Waiting for mission start'}
 
-Current strategy: ${this.research.currentStrategy}
+Current strategy: ${this.research.currentStrategy || 'Strategy pending'}
+Adaptive Strategy: ${adaptiveStrategy.dragonStrategy} with ${adaptiveStrategy.riskTolerance} risk tolerance
 
 Available actions you can take:
 - Research and plan strategies
@@ -51,17 +138,42 @@ Always respond with determination and focus on the mission. Keep responses under
     }
 
     async handlePlayerJoin(playerName) {
-        if (!this.missionStarted && this.bot.players.size === 1) {
+        console.log(`🎮 Player joined: ${playerName}`);
+        
+        if (!this.missionStarted && this.bot.players && Object.keys(this.bot.players).length === 1) {
             await this.startEnderDragonMission();
         } else if (this.missionActive) {
-            await this.bot.sendChat(`Welcome ${playerName}! Join my quest to defeat the Ender Dragon! 🐉⚔️`);
-            await this.briefNewPlayer(playerName);
+            try {
+                await this.bot.sendChat(`Welcome ${playerName}! Join my quest to defeat the Ender Dragon! 🐉⚔️`);
+                await this.briefNewPlayer(playerName);
+            } catch (error) {
+                console.error('Failed to send player join message:', error);
+            }
         }
     }
 
     handlePlayerLeave(playerName) {
-        if (this.bot.players.size === 0 && this.missionActive) {
-            this.bot.sendChat('🤖 Continuing the dragon mission solo! The quest must go on!');
+        console.log(`🚪 Player left: ${playerName}`);
+        
+        if (this.bot.players && Object.keys(this.bot.players).length === 0 && this.missionActive) {
+            try {
+                this.bot.sendChat('🤖 Continuing the dragon mission solo! The quest must go on!');
+            } catch (error) {
+                console.error('Failed to send player leave message:', error);
+            }
+        }
+    }
+
+    // FIXED: Added better error handling for chat messages
+    async safeSendChat(message) {
+        try {
+            if (message && typeof message === 'string' && message.trim().length > 0) {
+                await this.bot.sendChat(message);
+            } else {
+                console.warn('Attempted to send invalid chat message:', message);
+            }
+        } catch (error) {
+            console.error('Failed to send chat message:', error);
         }
     }
 
@@ -73,7 +185,7 @@ Always respond with determination and focus on the mission. Keep responses under
         this.currentPhase = 'research';
         
         console.log('🚀 ENDER DRAGON MISSION INITIATED!');
-        await this.bot.sendChat('🐉 MISSION START! Time to defeat the Ender Dragon! Let me research our strategy...');
+        await this.safeSendChat('🐉 MISSION START! Time to defeat the Ender Dragon! Let me research our strategy...');
         
         this.logProgress('Mission initiated - Beginning research phase');
         await this.conductEnderDragonResearch();
@@ -81,9 +193,17 @@ Always respond with determination and focus on the mission. Keep responses under
 
     async conductEnderDragonResearch() {
         console.log('🔬 Conducting Ender Dragon research...');
-        await this.bot.sendChat('📚 Researching Ender Dragon tactics... Give me a moment!');
+        await this.safeSendChat('📚 Researching Ender Dragon tactics... Give me a moment!');
         
         try {
+            // Check if bot has AI model available
+            if (!this.bot.model) {
+                console.log('⚠️ AI model not available, using basic strategy');
+                await this.setBasicStrategy();
+                await this.startPreparationPhase();
+                return;
+            }
+
             const researchPrompt = `As an expert Minecraft player planning to defeat the Ender Dragon, provide a comprehensive strategy including:
 
 1. Essential items needed (weapons, armor, food, building blocks, etc.)
@@ -103,14 +223,14 @@ Be specific about quantities and crafting recipes. This is for Minecraft Bedrock
             await this.parseResearchForStrategy(researchResponse);
             
             console.log('✅ Research complete!');
-            await this.bot.sendChat('🧠 Research complete! I now have a strategy to defeat the dragon!');
+            await this.safeSendChat('🧠 Research complete! I now have a strategy to defeat the dragon!');
             
             this.logProgress('Research phase completed');
             await this.startPreparationPhase();
             
         } catch (error) {
             console.error('❌ Research failed:', error);
-            await this.bot.sendChat('🤔 Research hit a snag, but I know the basics! Let\'s start preparing!');
+            await this.safeSendChat('🤔 Research hit a snag, but I know the basics! Let\'s start preparing!');
             await this.setBasicStrategy();
             await this.startPreparationPhase();
         }
@@ -118,6 +238,11 @@ Be specific about quantities and crafting recipes. This is for Minecraft Bedrock
 
     async parseResearchForStrategy(research) {
         try {
+            if (!this.bot.model) {
+                await this.setBasicStrategy();
+                return;
+            }
+
             const strategyPrompt = `Based on this Ender Dragon research, extract:
 1. A prioritized list of items needed
 2. The immediate next goal/action
@@ -162,7 +287,7 @@ STRATEGY: brief strategy summary`;
 
     async startPreparationPhase() {
         this.currentPhase = 'preparation';
-        await this.bot.sendChat(`🎯 Phase 1: Preparation! Goal: ${this.research.currentGoal}`);
+        await this.safeSendChat(`🎯 Phase 1: Preparation! Goal: ${this.research.currentGoal}`);
         
         console.log('📋 Required items:', this.research.requiredItems);
         console.log('🎯 Current goal:', this.research.currentGoal);
@@ -170,7 +295,11 @@ STRATEGY: brief strategy summary`;
         this.logProgress(`Preparation phase started - Goal: ${this.research.currentGoal}`);
         
         // Delegate to gameplay manager
-        await this.bot.gameplayManager.beginResourceGathering();
+        if (this.bot.gameplayManager && typeof this.bot.gameplayManager.beginResourceGathering === 'function') {
+            await this.bot.gameplayManager.beginResourceGathering();
+        } else {
+            console.log('⚠️ GameplayManager or beginResourceGathering method not available');
+        }
     }
 
     async advanceMissionPhase(newPhase) {
@@ -179,13 +308,19 @@ STRATEGY: brief strategy summary`;
         
         switch (newPhase) {
             case 'nether':
-                await this.bot.gameplayManager.startNetherExpedition();
+                if (this.bot.gameplayManager && typeof this.bot.gameplayManager.startNetherExpedition === 'function') {
+                    await this.bot.gameplayManager.startNetherExpedition();
+                }
                 break;
             case 'stronghold':
-                await this.bot.gameplayManager.searchForStronghold();
+                if (this.bot.gameplayManager && typeof this.bot.gameplayManager.searchForStronghold === 'function') {
+                    await this.bot.gameplayManager.searchForStronghold();
+                }
                 break;
             case 'end_fight':
-                await this.bot.gameplayManager.enterTheEnd();
+                if (this.bot.gameplayManager && typeof this.bot.gameplayManager.enterTheEnd === 'function') {
+                    await this.bot.gameplayManager.enterTheEnd();
+                }
                 break;
             case 'victory':
                 await this.celebrateVictory();
@@ -195,22 +330,22 @@ STRATEGY: brief strategy summary`;
 
     async celebrateVictory() {
         console.log('🏆 ENDER DRAGON DEFEATED!');
-        await this.bot.sendChat('🏆 THE ENDER DRAGON IS DEFEATED! MISSION ACCOMPLISHED!');
+        await this.safeSendChat('🏆 THE ENDER DRAGON IS DEFEATED! MISSION ACCOMPLISHED!');
         
         await this.bot.delay(2000);
-        await this.bot.sendChat('🎉 Victory! The realm is safe! XP and dragon egg claimed!');
+        await this.safeSendChat('🎉 Victory! The realm is safe! XP and dragon egg claimed!');
         
         this.logProgress('MISSION COMPLETED: Ender Dragon defeated successfully!');
         this.currentPhase = 'victory';
         this.currentTask = 'celebrating';
         
         await this.bot.delay(3000);
-        await this.bot.sendChat('🐉➡️💀 From zero to dragon slayer! What an epic journey!');
+        await this.safeSendChat('🐉➡️💀 From zero to dragon slayer! What an epic journey!');
         
         this.printMissionSummary();
         
         setTimeout(() => {
-            this.bot.sendChat('🚀 Ready for another adventure? Type "!restart" for a new mission!');
+            this.safeSendChat('🚀 Ready for another adventure? Type "!restart" for a new mission!');
         }, 5000);
     }
 
@@ -225,12 +360,13 @@ STRATEGY: brief strategy summary`;
     }
 
     async restartMission() {
-        await this.bot.sendChat('🔄 Restarting dragon mission! Back to the beginning!');
+        await this.safeSendChat('🔄 Restarting dragon mission! Back to the beginning!');
         this.missionStarted = false;
         this.missionActive = false;
         this.currentPhase = 'waiting';
         this.currentTask = null;
         this.progressLog = [];
+        this.adaptiveStrategy = null; // Reset adaptive strategy
         
         // Reset research
         this.research = {
@@ -245,9 +381,9 @@ STRATEGY: brief strategy summary`;
 
     async briefNewPlayer(playerName) {
         await this.bot.delay(1000);
-        await this.bot.sendChat(`${playerName}: I'm on an epic quest to defeat the Ender Dragon! 🐉`);
+        await this.safeSendChat(`${playerName}: I'm on an epic quest to defeat the Ender Dragon! 🐉`);
         await this.bot.delay(2000);
-        await this.bot.sendChat(`Current phase: ${this.currentPhase} | Join the adventure! 🗡️`);
+        await this.safeSendChat(`Current phase: ${this.currentPhase} | Join the adventure! 🗡️`);
     }
 
     logProgress(message) {
@@ -270,6 +406,34 @@ STRATEGY: brief strategy summary`;
     getStrategy() {
         const strategy = this.research.currentStrategy || 'Gather resources, explore Nether, find stronghold, defeat dragon!';
         return `🧠 Strategy: ${strategy.substring(0, 120)}...`;
+    }
+
+    // ADD: Method to handle events from EventManager
+    async handleEvent(eventType, data) {
+        switch (eventType) {
+            case 'connected':
+                await this.onConnect();
+                break;
+            case 'mission_started':
+                // Handle mission start events
+                break;
+            case 'mission_completed':
+                // Handle mission completion events
+                break;
+            default:
+                // Handle other events as needed
+                break;
+        }
+    }
+
+    // ADD: Method to handle Ender Dragon spotted
+    async handleEnderDragonSpotted(dragon) {
+        console.log('🐉 MissionManager: Ender Dragon spotted!');
+        this.currentPhase = 'end_fight';
+        this.currentTask = 'engaging_dragon';
+        
+        await this.safeSendChat('🐉 TARGET ACQUIRED! Engaging the Ender Dragon!');
+        this.logProgress('Ender Dragon spotted - Final battle begins!');
     }
 }
 
