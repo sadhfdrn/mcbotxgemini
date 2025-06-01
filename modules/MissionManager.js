@@ -41,6 +41,24 @@ class MissionManager {
 
     // ADD MISSING METHOD: onConnect
     async onConnect() {
+        console.log('🔗 MissionManager: Bot connected, initializing mission system...');
+        
+        // Initialize mission state on connection
+        if (!this.missionStarted && this.bot.players && Object.keys(this.bot.players).length > 0) {
+            console.log('🎯 Players detected, starting mission...');
+            await this.startEnderDragonMission();
+        } else {
+            console.log('⏳ Waiting for players to join before starting mission...');
+            // Send a safe welcome message
+            try {
+                await this.bot.sendChat('🤖 DragonSlayerBot connected! Ready to hunt the Ender Dragon!');
+            } catch (error) {
+                console.error('Failed to send welcome message:', error);
+            }
+        }
+    }
+
+    // FIXED: Moved startAutonomousMode to be a separate method
     async startAutonomousMode() {
         console.log('🤖 Starting autonomous exploration mode...');
 
@@ -59,23 +77,6 @@ class MissionManager {
         this.missionActive = true;
 
         await this.bot.sendChat('🐉 Starting autonomous dragon hunting preparation!');
-    }
-
-        console.log('🔗 MissionManager: Bot connected, initializing mission system...');
-        
-        // Initialize mission state on connection
-        if (!this.missionStarted && this.bot.players && Object.keys(this.bot.players).length > 0) {
-            console.log('🎯 Players detected, starting mission...');
-            await this.startEnderDragonMission();
-        } else {
-            console.log('⏳ Waiting for players to join before starting mission...');
-            // Send a safe welcome message
-            try {
-                await this.bot.sendChat('🤖 DragonSlayerBot connected! Ready to hunt the Ender Dragon!');
-            } catch (error) {
-                console.error('Failed to send welcome message:', error);
-            }
-        }
     }
 
     // FIXED: updateStrategy method with better error handling
