@@ -41,6 +41,26 @@ class MissionManager {
 
     // ADD MISSING METHOD: onConnect
     async onConnect() {
+    async startAutonomousMode() {
+        console.log('🤖 Starting autonomous exploration mode...');
+
+        if (this.bot.navigationManager) {
+            const exploreTarget = {
+                x: this.bot.position.x + (Math.random() - 0.5) * 100,
+                y: this.bot.position.y,
+                z: this.bot.position.z + (Math.random() - 0.5) * 100
+            };
+
+            console.log(`🧭 Starting exploration to: ${Math.round(exploreTarget.x)}, ${Math.round(exploreTarget.z)}`);
+            await this.bot.navigationManager.navigateTo(exploreTarget);
+        }
+
+        this.currentPhase = 'preparation';
+        this.missionActive = true;
+
+        await this.bot.sendChat('🐉 Starting autonomous dragon hunting preparation!');
+    }
+
         console.log('🔗 MissionManager: Bot connected, initializing mission system...');
         
         // Initialize mission state on connection

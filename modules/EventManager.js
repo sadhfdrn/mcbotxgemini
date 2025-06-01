@@ -201,8 +201,13 @@ class EventManager extends EventEmitter {
             await this.managers.mission.handlePlayerJoin(player.username);
         }
         
-        if (this.managers.chat) {
+        if (this.managers.chat && typeof this.managers.chat.welcomePlayer === 'function') {
             await this.managers.chat.welcomePlayer(player.username);
+        } else {
+            console.log(`👋 Welcome ${player.username}! (ChatManager welcomePlayer not available)`);
+            if (this.bot && this.bot.sendChat) {
+                await this.bot.sendChat(`👋 Welcome ${player.username}! Ready to hunt the Ender Dragon!`);
+            }
         }
         
         // Record interaction for learning
