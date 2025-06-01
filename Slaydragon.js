@@ -1,4 +1,4 @@
-// Enhanced Main bot file - EnderDragonBot.js
+// Enhanced Main bot file - EnderDragonBot.js with Chat Safety Fixes
 require('dotenv').config();
 const bedrock = require('bedrock-protocol');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
@@ -24,6 +24,91 @@ let bot = null;
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
+
+// CHAT SAFETY FIXES - Safe chat sending method
+async function safeSendChat(bot, message) {
+    try {
+        // Validate message
+        if (!message || typeof message !== 'string') {
+            console.warn('Invalid chat message:', message);
+            return false;
+        }
+        
+        // Clean and validate the message
+        const cleanMessage = message.toString().trim();
+        if (cleanMessage.length === 0) {
+            console.warn('Empty chat message attempted');
+            return false;
+        }
+        
+        // Ensure message length is reasonable (Minecraft has limits)
+        const finalMessage = cleanMessage.length > 256 ? 
+            cleanMessage.substring(0, 253) + '...' : 
+            cleanMessage;
+        
+        // Send the message via bedrock protocol
+        if (bot.connected && bot.client) {
+            bot.client.write('text', {
+                type: 'chat',
+                needs_translation: false,
+                source_name: bot.config.username,
+                xuid: '',
+                platform_chat_id: '',
+                message: finalMessage
+            });
+            bot.emit('packet_sent');
+        }
+        
+        console.log(`💬 Chat sent: ${finalMessage}`);
+        bot.emit('chat_sent', finalMessage);
+        return true;
+        
+    } catch (error) {
+        console.error('Failed to send chat message:', error);
+        
+        // If it's a string buffer error, try to handle it
+        if (error.code === 'ERR_INVALID_ARG_TYPE') {
+            console.error('String buffer error - message was:', typeof message, message);
+        }
+        
+        bot.emit('error', error);
+        return false;
+    }
+}
+
+// CHAT SAFETY FIXES - Override the bot's sendChat method to use safe sending
+function setupSafeChatMethod(bot) {
+    // Store original method if it exists
+    bot._originalSendChat = bot.sendChat;
+    
+    // Override with safe method
+    bot.sendChat = async function(message) {
+        return await safeSendChat(this, message);
+    };
+    
+    // Also create chat method alias
+    bot.chat = async function(message) {
+        return await safeSendChat(this, message);
+    };
+}
+
+// CHAT SAFETY FIXES - Add validation to strategy broadcasting
+async function broadcastStrategy(bot, strategy) {
+    try {
+        if (!strategy || typeof strategy !== 'object') {
+            console.warn('Invalid strategy object:', strategy);
+            return;
+        }
+        
+        const strategyText = `🎯 Strategy adapted for ${strategy.gameMode || 'unknown'} (${strategy.difficulty || 'normal'}): ${strategy.dragonStrategy || 'balanced_tactical'}`;
+        
+        // Use safe chat method
+        await bot.sendChat(strategyText);
+        
+    } catch (error) {
+        console.error('Failed to broadcast strategy:', error);
+    }
+}
 
 // API Routes
 app.get('/', (req, res) => {
@@ -180,6 +265,16 @@ class EnderDragonMissionBot extends EventEmitter {
         // Setup event system
         this.setupEventSystem();
 
+        // CHAT SAFETY FIXES - Setup safe chat method after initialization
+        setupSafeChatMethod(this);
+
+        // Add delay utility if not present
+        if (!this.delay) {
+            this.delay = function(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            };
+        }
+
         if (this.config.debugMode) {
             console.log('🐛 Debug mode enabled');
             console.log('📊 Config loaded:', { ...this.config, geminiApiKey: '***hidden***' });
@@ -248,6 +343,13 @@ class EnderDragonMissionBot extends EventEmitter {
         this.on('combat_outcome', (data) => this.learningManager.learnFromCombat(data));
         this.on('navigation_success', (data) => this.learningManager.learnFromNavigation(data));
         
+        // CHAT SAFETY FIXES - Enhanced EventManager chat event fix
+        this.on('chat_sent', (message) => {
+            // Validate message before logging
+            const validMessage = message && typeof message === 'string' ? message : '[Invalid Message]';
+            console.log(`📡 EventManager: Chat sent - ${validMessage}`);
+        });
+        
         console.log('📡 Event system configured');
     }
 
@@ -294,15 +396,27 @@ class EnderDragonMissionBot extends EventEmitter {
     }
 
     setupEventHandlers() {
+        // CHAT SAFETY FIXES - Enhanced spawn event handler with MissionManager connection fix
         this.client.on('spawn', async () => {
             console.log('✅ DragonSlayerBot spawned successfully!');
             this.connected = true;
             this.emit('connected');
             
+            // Send safe welcome message
             await this.sendChat('🐉 DragonSlayerBot online! Enhanced AI with learning capabilities active!');
             
-            // Initialize managers that need connection
-            await this.missionManager.onConnect();
+            // Safely initialize mission manager
+            try {
+                if (this.missionManager && typeof this.missionManager.onConnect === 'function') {
+                    await this.missionManager.onConnect();
+                } else {
+                    console.warn('⚠️ MissionManager onConnect method not available');
+                }
+            } catch (error) {
+                console.error('❌ MissionManager onConnect failed:', error);
+            }
+            
+            // Initialize other managers that need connection
             await this.navigationManager.onConnect();
             await this.combatManager.onConnect();
         });
@@ -388,8 +502,17 @@ class EnderDragonMissionBot extends EventEmitter {
             this.emit('disconnected', reason);
         });
 
+        // CHAT SAFETY FIXES - Enhanced error handling
         this.client.on('error', (error) => {
-            console.error('❌ Client error:', error);
+            console.error('🚨 Bot error:', error);
+            
+            // Handle specific error types
+            if (error.code === 'ERR_INVALID_ARG_TYPE' && error.message.includes('SizeOf error')) {
+                console.error('❌ Chat message buffer error - likely sending undefined/null message');
+            }
+            
+            // Emit error event for EventManager
+            this.emit('system_error', error);
             this.emit('error', error);
         });
 
@@ -432,37 +555,13 @@ class EnderDragonMissionBot extends EventEmitter {
         }, 2000);
     }
 
+    // CHAT SAFETY FIXES - The sendChat method now uses the safe implementation
+    // This method is overridden by setupSafeChatMethod() to use safeSendChat()
     async sendChat(message) {
-        const startTime = Date.now();
-        
-        if (this.connected && this.client) {
-            try {
-                this.client.write('text', {
-                    type: 'chat',
-                    needs_translation: false,
-                    source_name: this.config.username,
-                    xuid: '',
-                    platform_chat_id: '',
-                    message: message
-                });
-                this.emit('packet_sent');
-            } catch (error) {
-                console.error('Failed to send chat:', error);
-                this.emit('error', error);
-            }
-        }
-        
-        // Track response time
-        const responseTime = Date.now() - startTime;
-        this.performance.responseTimes.push(responseTime);
-        if (this.performance.responseTimes.length > 100) {
-            this.performance.responseTimes.shift();
-        }
-        this.performance.averageResponseTime = 
-            this.performance.responseTimes.reduce((a, b) => a + b, 0) / this.performance.responseTimes.length;
-        
-        console.log(`🤖 Bot: ${message}`);
-        this.emit('chat_sent', message);
+        // This will be replaced by the safe method during initialization
+        // Fallback implementation in case something goes wrong
+        console.warn('Using fallback sendChat - safe method should have been set up');
+        return await safeSendChat(this, message);
     }
 
     async generateAIResponse(prompt, context = {}) {
@@ -554,9 +653,14 @@ async function startBot() {
     }
 }
 
+// Export helper functions for external use
+module.exports = { 
+    EnderDragonMissionBot,
+    safeSendChat,
+    broadcastStrategy
+};
+
 // Start the bot
 if (require.main === module) {
     startBot().catch(console.error);
 }
-
-module.exports = { EnderDragonMissionBot };
