@@ -396,6 +396,61 @@ class NavigationManager extends EventEmitter {
         this.emit('navigation_stopped');
     }
 
+    // Main navigation method - simplified and corrected
+    async navigateTo(target) {
+        console.log(`🧭 Navigation started to X:${Math.round(target.x)} Y:${Math.round(target.y)} Z:${Math.round(target.z)}`);
+
+        try {
+            const current = this.bot.position;
+            const dx = target.x - current.x;
+            const dz = target.z - current.z;
+            const distance = Math.sqrt(dx * dx + dz * dz);
+
+            if (distance < 1) {
+                console.log('🎯 Already at target location');
+                return true;
+            }
+
+            const moveX = dx / distance;
+            const moveZ = dz / distance;
+            const steps = Math.min(Math.floor(distance), 20);
+
+            for (let i = 0; i < steps; i++) {
+                const newPos = {
+                    x: current.x + (moveX * i),
+                    y: current.y,
+                    z: current.z + (moveZ * i)
+                };
+
+                if (this.bot.client && this.bot.connected) {
+                    this.bot.client.write('move_player', {
+                        runtime_id: this.bot.runtimeId,
+                        position: newPos,
+                        pitch: 0,
+                        yaw: Math.atan2(-dx, dz) * (180 / Math.PI),
+                        head_yaw: Math.atan2(-dx, dz) * (180 / Math.PI),
+                        mode: 0,
+                        on_ground: true,
+                        ridden_runtime_id: 0,
+                        tick: 0
+                    });
+
+                    this.bot.position = newPos;
+                    await this.bot.delay(100);
+                }
+            }
+
+            console.log('✅ Navigation completed');
+            this.bot.emit('navigation_completed', { target, distance });
+            return true;
+
+        } catch (error) {
+            console.error('❌ Navigation failed:', error);
+            this.bot.emit('navigation_failed', { target, error: error.message });
+            return false;
+        }
+    }
+
     // Utility methods
     calculateDistance(pos1, pos2) {
         const dx = pos1.x - pos2.x;
@@ -471,61 +526,5 @@ class NavigationManager extends EventEmitter {
         console.log('💎 End Crystal location added:', position);
     }
 }
-
-
-    async navigateTo(target) {
-        console.log(`🧭 Navigation started to X:${Math.round(target.x)} Y:${Math.round(target.y)} Z:${Math.round(target.z)}`);
-
-        try {
-            const current = this.bot.position;
-            const dx = target.x - current.x;
-            const dz = target.z - current.z;
-            const distance = Math.sqrt(dx * dx + dz * dz);
-
-            if (distance < 1) {
-                console.log('🎯 Already at target location');
-                return true;
-            }
-
-            const moveX = dx / distance;
-            const moveZ = dz / distance;
-            const steps = Math.min(Math.floor(distance), 20);
-
-            for (let i = 0; i < steps; i++) {
-                const newPos = {
-                    x: current.x + (moveX * i),
-                    y: current.y,
-                    z: current.z + (moveZ * i)
-                };
-
-                if (this.bot.client && this.bot.connected) {
-                    this.bot.client.write('move_player', {
-                        runtime_id: this.bot.runtimeId,
-                        position: newPos,
-                        pitch: 0,
-                        yaw: Math.atan2(-dx, dz) * (180 / Math.PI),
-                        head_yaw: Math.atan2(-dx, dz) * (180 / Math.PI),
-                        mode: 0,
-                        on_ground: true,
-                        ridden_runtime_id: 0,
-                        tick: 0
-                    });
-
-                    this.bot.position = newPos;
-                    await this.bot.delay(100);
-                }
-            }
-
-            console.log('✅ Navigation completed');
-            this.bot.emit('navigation_completed', { target, distance });
-            return true;
-
-        } catch (error) {
-            console.error('❌ Navigation failed:', error);
-            this.bot.emit('navigation_failed', { target, error: error.message });
-            return false;
-        }
-    }
-
 
 module.exports = NavigationManager;
